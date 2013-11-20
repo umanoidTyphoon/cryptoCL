@@ -3,11 +3,7 @@
 #define __kernel
 #define __global
 
-__kernel void vector_add(__global const int *A, __global const int *B, __global int *C) {
-    
-    // get the index of the current element to be processed
-    int i = get_global_id(0);
-    
-    // do the operation
-    C[i] = A[i] + B[i];
+__kernel void vector_add(__global int *passwd, __global const unsigned char hash, __global const char *cs,
+						 __global char sync, __global int *plain) {
+
 }

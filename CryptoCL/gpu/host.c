@@ -36,10 +36,13 @@ int crackMD5(unsigned char *hash, char *cs, int passlen) {
 	cl_int ret;			// error code
 
 	int cs_len = strlen(cs);
+	//int char *start_pt =
 	double td;
 
 	clut_open_device(&dev, PATH_TO_KERNEL);
 	clut_print_device_info(&dev);
+
+
 
 	/* ----------------------------------------- Create execution kernel ----------------------------------------- */
 	kernel = clCreateKernel(dev.program, KERNEL_NAME, &ret);
@@ -49,33 +52,33 @@ int crackMD5(unsigned char *hash, char *cs, int passlen) {
 	/* ----------------------------------- Create memory buffers on the device ----------------------------------- */
 	cl_mem plain = clCreateBuffer(dev.context, CL_MEM_READ_WRITE, passlen * sizeof(int), NULL, &ret);
 	if (ret)
-		clut_panic("Fallita l'allocazione della memoria sul device per la memorizzazione della password da testare");
+		clut_panic(ret, "Fallita l'allocazione della memoria sul device per la memorizzazione della password da testare");
 
 	cl_mem dhash = clCreateBuffer(dev.context, CL_MEM_READ_ONLY, HASH_SIZE * sizeof(unsigned char), NULL, &ret);
 	if (ret)
-		clut_panic("Fallita l'allocazione della memoria sul device per la memorizzazione dell'hash");
+		clut_panic(ret, "Fallita l'allocazione della memoria sul device per la memorizzazione dell'hash");
 
 	cl_mem charset = clCreateBuffer(dev.context, CL_MEM_READ_ONLY, cs_len * sizeof(char), NULL, &ret);
 	if (ret)
-		clut_panic("Fallita l'allocazione della memoria sul device per la memorizzazione del charset");
+		clut_panic(ret, "Fallita l'allocazione della memoria sul device per la memorizzazione del charset");
 
 	cl_mem sync = clCreateBuffer(dev.context, CL_MEM_READ_WRITE, sizeof(char), NULL, &ret);
 	if (ret)
-		clut_panic("Fallita l'allocazione della memoria sul device per la memorizzazione del flag di sync");
+		clut_panic(ret, "Fallita l'allocazione della memoria sul device per la memorizzazione del flag di sync");
 
 	cl_mem dcracked = clCreateBuffer(dev.context, CL_MEM_READ_WRITE, passlen * sizeof(char), NULL, &ret);
 	if (ret)
-		clut_panic("Fallita l'allocazione della memoria sul device per la memorizzazione della password in chiaro");
+		clut_panic(ret, "Fallita l'allocazione della memoria sul device per la memorizzazione della password in chiaro");
 
 
 	/* ----------------------------------- Write memory buffers on the device ------------------------------------ */
 	ret = clEnqueueWriteBuffer(dev.queue, dhash, CL_TRUE, 0, HASH_SIZE * sizeof(unsigned char), hash, 0, NULL, NULL);
 	if(ret)
-	   clut_panic("Fallita la scrittura dell' hash sul buffer di memoria del device");
+	   clut_panic(ret, "Fallita la scrittura dell' hash sul buffer di memoria del device");
 
 	ret = clEnqueueWriteBuffer(dev.queue, charset, CL_TRUE, 0, cs_len * sizeof(char), cs, 0, NULL, NULL);
 	if(ret)
-		clut_panic("Fallita la scrittura dell' hash sul buffer di memoria del device");
+		clut_panic(ret, "Fallita la scrittura dell' hash sul buffer di memoria del device");
 
 
 	/* --------------------------------- Set the arguments to our compute kernel --------------------------------- */

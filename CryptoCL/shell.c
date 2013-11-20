@@ -64,6 +64,10 @@ void shell() {
 	bzero(ui, sizeof(user_input));
 	strcpy(num_procs, "1");
 
+	/* Setting del charset di default - alfabeto minuscolo */
+	memcpy(ui->cs, charsets[0], strlen(charsets[0]) + 1);
+	printf("\nINFO : Charset di default impostato correttamente\n\n");
+
 	/* Arma i segnali di terminazione forzata */
 	signal(SIGHUP, sig_halt);
 	signal(SIGINT, sig_halt);

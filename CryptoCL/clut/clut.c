@@ -11,6 +11,7 @@
 //  Revision:       $Revision: 1.00 $
 
 
+#include <errno.h>
 #include <sys/time.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -170,7 +171,7 @@ void clut_print_device_info(clut_device* dev) {
     clut_check_err(err, "failed to retrieve CL_DEVICE_MAX_WORK_GROUP_SIZE");
 
     // print out device info
-    printf("Device info:\n");
+    printf("\n\nDevice info:\n");
     printf("    %-*s %s\n", f, "Name:", deviceName);
     printf("    %-*s %s\n", f, "Vendor:", vendor);
     printf("    %-*s %s\n", f, "OpenCL version:", opencl_version);
@@ -180,23 +181,24 @@ void clut_print_device_info(clut_device* dev) {
     printf("    %-*s %0.00f MB\n", f, "Global memory:", (double)amountOfMemory/1048576);            
     printf("    %-*s %0.00f MB\n", f, "Max allocatable memory:", (double)maxAllocatableMem/1048576);
     printf("    %-*s %u KB\n", f, "Local memory:", (unsigned int)localMem);
-    printf("    %-*s %lu\n", f, "Max work group size:", device_wg_size);    
+    printf("    %-*s %lu\n", f, "Max work group size:", device_wg_size);
+    printf("\n\n");
 }
 
 
 // ---------------------------------------------------------------------
 // clut_err_msg
 // ---------------------------------------------------------------------
-void clut_err_msg(char* msg){
-    fprintf(stderr, "Error: %s\n", msg);
+void clut_err_msg(int err, char* msg){
+    fprintf(stderr, "Error %d: %s\n", err, msg);
 }
 
 
 // ---------------------------------------------------------------------
 // clut_panic
 // ---------------------------------------------------------------------
-void clut_panic(char* msg) {
-    clut_err_msg(msg);
+void clut_panic(int err, char* msg) {
+    clut_err_msg(err, msg);
     exit(1);    
 }
 
@@ -206,7 +208,7 @@ void clut_panic(char* msg) {
 // ---------------------------------------------------------------------
 void clut_check_err(int err, char* msg) {
     if (err == CL_SUCCESS) return;
-    clut_panic(msg);
+    clut_panic(err, msg);
 }
 
 
@@ -225,7 +227,7 @@ cl_program __clut_load_program(clut_device* dev, char* program_name) {
 
     // load source code from file
     fp = fopen(program_name, "r");
-    if (fp == NULL) clut_panic("failed to load kernel");
+    if (fp == NULL) clut_panic(errno, "failed to load kernel");
 
     source_str  = malloc(MAX_SOURCE_SIZE);
     source_size = fread(source_str, 1, MAX_SOURCE_SIZE, fp);
@@ -245,7 +247,7 @@ cl_program __clut_load_program(clut_device* dev, char* program_name) {
         size_t len;
         char buffer[16384];
 
-        clut_err_msg("failed to build program executable");
+        clut_err_msg(err, "failed to build program executable");
 
         // get OpenCL C compiler messages
         clGetProgramBuildInfo(program, dev->device_id, 

@@ -36,8 +36,8 @@ void        clut_close_device       (clut_device* dev);
 cl_double   clut_get_duration       (cl_event perf_event);
 double      clut_get_real_time      ();
 void        clut_print_device_info  (clut_device* dev);
-void        clut_err_msg            (char* msg);
-void        clut_panic              (char* msg);
+void        clut_err_msg            (int err, char* msg);
+void        clut_panic              (int err, char* msg);
 void        clut_check_err          (int err, char* msg);
 
 #endif
