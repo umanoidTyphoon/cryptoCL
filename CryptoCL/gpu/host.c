@@ -43,7 +43,6 @@ int crackMD5(unsigned char *hash, char *cs, int passlen) {
 	clut_print_device_info(&dev);
 
 
-
 	/* ----------------------------------------- Create execution kernel ----------------------------------------- */
 	kernel = clCreateKernel(dev.program, KERNEL_NAME, &ret);
 	clut_check_err(ret, "Fallita la creazione del kernel");
@@ -117,6 +116,8 @@ int crackMD5(unsigned char *hash, char *cs, int passlen) {
 	ret |= clReleaseMemObject(sync);
 	ret |= clReleaseMemObject(dcracked);
 	clut_check_err(ret, "Rilascio di risorse fallito");
+
+	clut_close_device(&dev);
 
 	return 0;
 }
