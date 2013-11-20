@@ -186,14 +186,7 @@ void shell() {
 
 				gpu_process = fork();
 				if (!gpu_process){
-
-					if(displayGPUinfo()){
-					   debug("SHELL", "Errore nella visualizzazione delle informazioni sulla scheda grafica\n");
-					   quit();
-					   exit(EGPU);
-					}
 					crackMD5(ui->hash, ui->cs, ui->passlen);
-
 				}
 
 				debug("SHELL", "GPU process avviato con PID = %d\n", gpu_process);
