@@ -8,11 +8,20 @@
 #ifndef HOST_H_
 #define HOST_H_
 
-#define GLOBAL_SIZE         (16*1024*1024)  // 64 MB of data per input array
-#define LOCAL_SIZE          8               // work items per work group
-#define KERNEL_NAME			"GPU_crackMD5"
+#define COMPUTING_UNITS 2	// Number of computing units on an ATI MOBILITY RADEON HD 4500
+#define DISPOSITIONS(cs_len, pass_len) (pow((cs_len),(pass_len)));
+#define DISP_PER_CORE(disp, num_procs) (((disp)/(num_procs))+1);
+#define KERNEL_NAME	"GPU_crackMD5"
+/* Number of stream processing units contained in a computing unit of an ATI MOBILITY RADEON
+ * HD 4500. A stream processing unit is totally equivalent to a CUDA CORE */
+#define STREAM_PROCESSING_UNITS 80
+#define STARTING_CHAR(init, cs_size, pos) (((long)((init)/(powl(cs_size, pos))))%(cs_size));
+#define AVAILABLE_CORES COMPUTING_UNITS * STREAM_PROCESSING_UNITS // Number of total available cores on an ATI graphic card
+
 
 int crackMD5(unsigned char *hash, char *cs, int passlen);
 int displayGPUinfo();
+
+int *compute_starting_point(long chunk, int cs_len, int passlen);
 
 #endif /* HOST_H_ */

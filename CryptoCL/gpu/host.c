@@ -6,6 +6,7 @@
  */
 
 #include <errno.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -23,11 +24,6 @@
 #include <CL/cl.h>
 #endif
 
-#define GLOBAL_SIZE         (16*1024*1024)  // 64 MB of data per input array
-#define LOCAL_SIZE          8               // work items per work group
-
-
-
 int crackMD5(unsigned char *hash, char *cs, int passlen) {
 
 	clut_device dev;	// device struct
@@ -35,9 +31,18 @@ int crackMD5(unsigned char *hash, char *cs, int passlen) {
 	cl_kernel kernel;	// execution kernel
 	cl_int ret;			// error code
 
-	int cs_len = strlen(cs);
-	//int char *start_pt =
 	double td;
+	int cs_len;
+	long chunk, disp;
+	int *start_pt;
+
+	cs_len = strlen(cs);
+	disp = DISPOSITIONS(cs_len, passlen);
+	chunk = DISP_PER_CORE(disp, AVAILABLE_CORES);
+
+	printf("%lu\n\n", disp);
+
+	//start_pt = compute_starting_point()
 
 	clut_open_device(&dev, PATH_TO_KERNEL);
 	clut_print_device_info(&dev);
@@ -90,9 +95,7 @@ int crackMD5(unsigned char *hash, char *cs, int passlen) {
 
 
 	/* ---------------------------------------- Execute the OpenCL kernel ---------------------------------------- */
-	size_t global_item_size = GLOBAL_SIZE; // process the entire lists
-	size_t local_item_size  = LOCAL_SIZE;  // divide work items into groups
-	ret = clEnqueueNDRangeKernel(dev.queue, kernel, 1, NULL,&global_item_size, &local_item_size, 0, NULL, &evt);
+	ret = clEnqueueTask(dev.queue, kernel, 0, NULL, &evt);
 	clut_check_err(ret, "Fallita l'esecuzione del kernel");
 
 
@@ -101,7 +104,7 @@ int crackMD5(unsigned char *hash, char *cs, int passlen) {
 	ret = clEnqueueReadBuffer(dev.queue, dcracked, CL_TRUE, 0, passlen * sizeof(char), cracked, 0, NULL, NULL);
 	clut_check_err(ret, "Fallimento nel leggere il risultato di output");
 
-	printf("Password trovata: %s", cracked);
+	printf("Password trovata: %s\n", cracked);
 
 
 	/* ------------------------------------- Return kernel execution time ---------------------------------------- */
