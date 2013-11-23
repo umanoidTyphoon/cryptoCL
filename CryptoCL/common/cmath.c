@@ -7,8 +7,15 @@
 
 #include "cmath.h"
 
-long cpowl(int base, int exp){
-	long res = base;
-	res = (res << (base/exp)) + ((base % exp) * base);
-	return res;
+/* Exponentiation by squaring: this is the standard method for doing modular
+ *         exponentiation for huge numbers in asymmetric cryptography.         */
+long ipowl(long base, int exp){
+    long result = 1;
+    while (exp) {
+        if (exp & 1)
+            result *= base;
+        exp >>= 1;
+        base *= base;
+    }
+    return result;
 }

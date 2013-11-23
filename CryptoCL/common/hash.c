@@ -64,7 +64,7 @@ void binToHex(unsigned char *hash, char *buffer) {
 	}
 }
 
-int strToBin(char *token, char *dest, int size) {
+int strToBin(char *token, unsigned char *dest, int size) {
 	int i, j, lb, hb, len;
 	unsigned char toCopy;
 	char *buff;

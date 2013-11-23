@@ -14,6 +14,7 @@
 #include "clut.h"
 #include "hash.h"
 #include "host.h"
+#include "verbose.h"
 /* Header file containing the MACRO which expands to the path
  * of the OpenCL kernel */
 #include "private.h"
@@ -24,7 +25,7 @@
 #include <CL/cl.h>
 #endif
 
-int crackMD5(unsigned char *hash, char *cs, int passlen) {
+int crackMD5(char *hash, char *cs, int passlen) {
 
 	clut_device dev;	// device struct
 	cl_event  evt;      // performance measurement event
@@ -34,13 +35,18 @@ int crackMD5(unsigned char *hash, char *cs, int passlen) {
 	double td;
 	int cs_len;
 	long chunk, disp;
+	unsigned char bin_hash[HASH_SIZE];
 
 	cs_len = strlen(cs);
+	strToBin(hash, bin_hash, 2*HASH_SIZE);
+
 	disp = DISPOSITIONS(cs_len, passlen);
 	chunk = DISP_PER_CORE(disp, AVAILABLE_CORES);
 
+	debug("HOST", "Numero di disposizione da calcolare per stream processing unit = %lu\n", chunk);
+
 	clut_open_device(&dev, PATH_TO_KERNEL);
-	clut_print_device_info(&dev);
+	//clut_print_device_info(&dev);
 
 
 	/* ----------------------------------------- Create execution kernel ----------------------------------------- */
@@ -73,7 +79,7 @@ int crackMD5(unsigned char *hash, char *cs, int passlen) {
 	if (ret)
 		clut_panic(ret, "Fallita l'allocazione della memoria sul device per la memorizzazione del flag di sync");
 
-	cl_mem dcracked = clCreateBuffer(dev.context, CL_MEM_READ_WRITE, passlen * sizeof(char) + 1, NULL, &ret);
+	cl_mem dcracked = clCreateBuffer(dev.context, CL_MEM_READ_WRITE, HASH_SIZE, NULL, &ret);
 	if (ret)
 		clut_panic(ret, "Fallita l'allocazione della memoria sul device per la memorizzazione della password in chiaro");
 
@@ -87,7 +93,7 @@ int crackMD5(unsigned char *hash, char *cs, int passlen) {
 	if(ret)
 	   clut_panic(ret, "Fallita la scrittura del chunk sul buffer di memoria del device");
 
-	ret = clEnqueueWriteBuffer(dev.queue, dhash, CL_TRUE, 0, HASH_SIZE * sizeof(unsigned char), hash, 0, NULL, NULL);
+	ret = clEnqueueWriteBuffer(dev.queue, dhash, CL_TRUE, 0, HASH_SIZE * sizeof(unsigned char), (int *)bin_hash, 0, NULL, NULL);
 	if(ret)
 	   clut_panic(ret, "Fallita la scrittura dell'hash sul buffer di memoria del device");
 
@@ -116,24 +122,35 @@ int crackMD5(unsigned char *hash, char *cs, int passlen) {
 
 
 	/* ---------------------------------------- Execute the OpenCL kernel ---------------------------------------- */
-	size_t global_dim[] = { 1 };
+	size_t global_dim[] = { AVAILABLE_CORES };
 	size_t local_dim[]  = { 1 };
-	ret = clEnqueueNDRangeKernel(dev.queue, kernel, 1, NULL, global_dim, local_dim, 0, NULL, &evt);
+	ret = clEnqueueNDRangeKernel(dev.queue, kernel, 1, NULL, global_dim, NULL, 0, NULL, &evt);
 	if(ret)
 	   clut_check_err(ret, "Fallita l'esecuzione del kernel");
 
 
 	/* -------------------------- Read the device memory buffer to the local variable ---------------------------- */
-	char *cracked = (char *) malloc(passlen * sizeof(char));
-	ret = clEnqueueReadBuffer(dev.queue, dcracked, CL_TRUE, 0, passlen * sizeof(char), cracked, 0, NULL, NULL);
-	clut_check_err(ret, "Fallimento nel leggere il risultato di output");
+	int   found = -1;
+	int digest[HASH_SIZE/sizeof(int)];
+	char *password = (char *) malloc(passlen * sizeof(char) + 1);
+	memset(password, 0, passlen * sizeof(char) + 1);
 
-	printf("Password trovata: %s\n", cracked);
-
+	ret = clEnqueueReadBuffer(dev.queue, sync, CL_TRUE, 0, sizeof(int), &found, 0, NULL, NULL);
+	if(ret)
+	   clut_check_err(ret, "Fallimento nel leggere se la password e' stata trovata con successo");
+	debug("HOST", "La password e' stata trovata dal kernel OpenCL? ");
+	if(found){
+	   ret = clEnqueueReadBuffer(dev.queue, dcracked, CL_TRUE, 0, HASH_SIZE, digest, 0, NULL, NULL);
+	   if(ret)
+	      clut_check_err(ret, "Fallimento nel leggere la password");
+	   printf("Si. Password: %s\n", (char *)digest);
+	}
+	else
+		printf("No.\n\n");
 
 	/* ------------------------------------- Return kernel execution time ---------------------------------------- */
 	td = clut_get_duration(evt);
-
+	debug("HOST","Kernel duration: %f secs\n", td);
 
 	/* ----------------------------------------------- Clean up -------------------------------------------------- */
 	ret  = clReleaseKernel(kernel);
@@ -147,4 +164,20 @@ int crackMD5(unsigned char *hash, char *cs, int passlen) {
 	clut_close_device(&dev);
 
 	return 0;
+}
+
+void from_int_to_ASCII(int *to_Convert, char* converted, int length){
+	int i;
+	for(i=0; i<length; i++){
+		int int_to_convert = to_Convert[i];
+		from_int_to_chars(int_to_convert, converted + (i*sizeof(int)));
+	}
+}
+
+void from_int_to_chars(int integer, char *s){
+	int i;
+	for(i=0; i<sizeof(int); i++){
+
+
+	}
 }

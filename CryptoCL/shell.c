@@ -50,15 +50,17 @@ void quit(){
 void shell() {
 
 	char num_procs[32];
-	char spasslen[STR_INT_SIZE], sverbose[STR_INT_SIZE], sauditing[STR_INT_SIZE], sdictionary[STR_INT_SIZE];
-	int ret, num;
+	char spasslen[STR_INT_SIZE], sverbose[STR_INT_SIZE], sauditing[STR_INT_SIZE];
+	int num, ret;
 	unsigned char buffer[256], buffer2[256], *token;
-	unsigned char hash[HASH_SIZE];	pthread_t wait_id;
-
+	unsigned char hash[HASH_SIZE];
+	pthread_t wait_id;
 
 	printf("===============================\n");
 	printf("           Crypto\n");
 	printf("===============================\n");
+
+
 
 	/* Azzeramento aree di memoria */
 	bzero(ui, sizeof(user_input));
@@ -77,13 +79,9 @@ void shell() {
 	/* Avvia il main loop di shell per la configurazione */
 	while (1) {
 		printf(PROMPT);
-		fflush(stdout);
 
 		bzero(buffer, sizeof(buffer));
-		if (!fgets(buffer, sizeof(buffer), stdin)) {
-			printf("Errore sullo stdin! Esco\n");
-			exit(EIO);	//TODO: codice errore
-		}
+		fgets(buffer, sizeof(buffer), stdin);
 
 		token = strtok(buffer, " \n");
 		if (token == NULL ) {
@@ -167,7 +165,6 @@ void shell() {
 			printf("\n\tpasslen = %d\n", ui->passlen);
 			printf("\tAuditing %s\n", ui->auditing ? "abilitato" : "disabilitato");
 			printf("\tConferma? (y, n) ");
-			fflush(stdout);
 
 			while (!fgets(buffer, sizeof(buffer), stdin)) {
 				continue;
@@ -186,11 +183,12 @@ void shell() {
 				sprintf(spasslen, "%d", ui->passlen);
 				sprintf(sverbose, "%d", ui->verbose);
 				sprintf(sauditing, "%d", ui->auditing);
-				sprintf(sdictionary, "%d", ui->attack);
+
 
 				gpu_process = fork();
 				if (!gpu_process){
-					crackMD5(ui->hash, ui->cs, ui->passlen);
+					ret = crackMD5(ui->hash, ui->cs, ui->passlen);
+					exit(ret);
 				}
 
 				debug("SHELL", "GPU process avviato con PID = %d\n", gpu_process);

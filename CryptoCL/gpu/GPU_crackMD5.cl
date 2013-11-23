@@ -1,21 +1,26 @@
-#define __kernel
-#define __global
-
-// leftrotate function definition
+// MD5 leftrotate function definition
 #define LEFTROTATE(x, c) (((x) << (c)) | ((x) >> (32 - (c))))
+#define BYTE_WITH_MSB_EQUAL_TO_ONE 1
+#define HASH_SIZE 16
+#define MD5_MSG_SIZE 56
+#define PASSWD_FOUND 1
 /* Number of zeroes attached to the password. The number depends
  * on the password length, since the message size has to reach
  * 448 (mod 512) bits, namely 56B. See MD5 simple implementation
  * on Wikipedia for further information:
  * 			    http://en.wikipedia.org/wiki/MD5
  */
-#define MD5_MSG_SIZE 56
-#define BYTE_WITH_MSB_EQUAL_TO_ONE 1
 #define ZEROES_PLUS_PASSLEN MD5_MSG_SIZE - BYTE_WITH_MSB_EQUAL_TO_ONE
 
-
+/*
+ * Set the components of an OpenCL vector of 16 unsigned chars
+ * @param vec - the vector whose components have to be set
+ * @param index - index of the vector component to be set
+ * @param c - character to be set in the vector "vec" at the index "index"
+ * @return void
+ */
 void setVecComponent(uchar16 vec, int index, uchar c){
-	if(index==0)  vec.s0 = c;
+	if	   (index==0)  vec.s0 = c;
 	else if(index==1)  vec.s1 = c;
 	else if(index==2)  vec.s2 = c;
 	else if(index==3)  vec.s3 = c;
@@ -33,17 +38,97 @@ void setVecComponent(uchar16 vec, int index, uchar c){
 	else if(index==15) vec.sF = c;
 }
 
+/*
+ * Check if the digest given in input to the kernel is equal to the digest
+ * computed by the kernel
+ * @param computedDigest - digest computed by the kernel
+ * @param digest - digest given in input to the kernel
+ * @return 0, if the two digest are different. Otherwise 1.
+ */
+int is_equal(int *computedDigest, int *digest){
+
+	if(computedDigest[0] != digest[0] || computedDigest[1] != digest[1] ||
+	   computedDigest[2] != digest[2] || computedDigest[3] != digest[3])
+	   return 0;
+
+	return 1;
+}
+
+/*
+ * is_equal vector version
+ */
+int is_equal_Vector(uchar16 computedDigest, uchar16 digest){
+
+	if(digest.s0 != computedDigest.s0) return 0;
+	if(digest.s1 != computedDigest.s1) return 0;
+	if(digest.s2 != computedDigest.s2) return 0;
+	if(digest.s3 != computedDigest.s3) return 0;
+	if(digest.s4 != computedDigest.s4) return 0;
+	if(digest.s5 != computedDigest.s5) return 0;
+	if(digest.s6 != computedDigest.s6) return 0;
+	if(digest.s7 != computedDigest.s7) return 0;
+	if(digest.s8 != computedDigest.s8) return 0;
+	if(digest.s9 != computedDigest.s9) return 0;
+	if(digest.sA != computedDigest.sA) return 0;
+	if(digest.sB != computedDigest.sB) return 0;
+	if(digest.sC != computedDigest.sC) return 0;
+	if(digest.sD != computedDigest.sD) return 0;
+	if(digest.sE != computedDigest.sE) return 0;
+	if(digest.sF != computedDigest.sF) return 0;
+
+	return 1;
+}
+
+/*
+ * Set all the components of an integer array to zero
+ * @param array - array to set to zero
+ * @param dim - array length
+ * @return void
+ */
 void clean_int_array(int *array, int dim){
 	int i;
 	for(i=0; i<dim; i++)
 		array[i] = 0;
 }
 
-void set_nth_byte(int integer, int byte_index, uchar c){
-	integer |= (c << (byte_index * 8));
+/*
+ * Copy the digest given in input to the kernel from global to private memory
+ * @param digest - private memory destination
+ * @param hash - global memory source
+ * @return void
+ */
+
+void cpy_in_pvt_mem(int *digest, __global const int *hash){
+	digest[0] = hash[0]; digest[1] = hash[1];
+	digest[2] = hash[2]; digest[3] = hash[3];
 }
 
-void md5(int *password, int initial_len, int cindex, uchar16 digest) {
+/* Exponentiation by squaring: this is the standard method for doing modular
+ *         exponentiation for huge numbers in asymmetric cryptography.         */
+long ipowl(long base, int exp){
+    long result = 1;
+    while (exp) {
+        if (exp & 1)
+            result *= base;
+        exp >>= 1;
+        base *= base;
+    }
+    return result;
+}
+
+/*
+ * Set the nth byte of an integer. Useful to pack a string in a integer
+ * @param integer - pointer to an array of integer which will contain the string
+ * @param byte_index - byte index to set
+ * @param c - char to set in the integer array at index "byte_index"
+ * @return void
+ */
+void set_nth_byte(int *integer, int byte_index, uchar c){
+	*integer |= (c << (byte_index * 8));
+}
+
+/* MD5 implementation in OpenCL. Instead of unsigned chars, integers are used */
+void md5(int *password, int initial_len, int cindex, int *ch0, int *ch1, int *ch2, int *ch3) {
 
 	// Constants are the integer part of the sines of integers (in radians) * 2^32.
 	const uint k[64] = {
@@ -73,7 +158,7 @@ void md5(int *password, int initial_len, int cindex, uchar16 digest) {
 	// These vars will contain the hash
 	uint h0, h1, h2, h3;
 
-	int count, new_len, offset, zeroes;
+	int  offset;
 	uint w[16];
 	uint a, b, c, d, i, f, g, temp;
 
@@ -88,21 +173,20 @@ void md5(int *password, int initial_len, int cindex, uchar16 digest) {
 	//append "0" bits until message length in bits ≡ 448 (mod 512) UNUSEFUL since my array is initialized to 0
 	//append length mod (2^64) to message
 
-	set_nth_byte(password[cindex], initial_len % sizeof(int), 0x80); // append the "1" bit; most significant bit is "first"
+	set_nth_byte(password+cindex, initial_len % sizeof(int), 0x80); // append the "1" bit; most significant bit is "first"
 
-	zeroes = MD5_MSG_SIZE - BYTE_WITH_MSB_EQUAL_TO_ONE - initial_len;
-	cindex += (zeroes >> sizeof(int)) + 1;
+	cindex = MD5_MSG_SIZE / sizeof(int);
 
 	// append the len in bits at the end of the buffer.
-	set_nth_byte(password[cindex], 0, (uchar) (initial_len * 8));
-	set_nth_byte(password[cindex], 1, (uchar) ((initial_len * 8) >> 8 ));
-	set_nth_byte(password[cindex], 2, (uchar) ((initial_len * 8) >> 16));
-	set_nth_byte(password[cindex++], 3, (uchar) ((initial_len * 8) >> 24));
-
-	set_nth_byte(password[cindex], 0, (uchar) (initial_len >> 29));
-	set_nth_byte(password[cindex], 1, (uchar) ((initial_len >> 29) >> 8 ));
-	set_nth_byte(password[cindex], 2, (uchar) ((initial_len >> 29) >> 16));
-	set_nth_byte(password[cindex], 3, (uchar) ((initial_len >> 29) >> 24));
+	set_nth_byte(password+cindex, 0, (uchar) (initial_len * 8));
+	set_nth_byte(password+cindex, 1, (uchar) ((initial_len * 8) >> 8 ));
+	set_nth_byte(password+cindex, 2, (uchar) ((initial_len * 8) >> 16));
+	set_nth_byte(password+cindex, 3, (uchar) ((initial_len * 8) >> 24));
+	cindex++;
+	set_nth_byte(password+cindex, 0, (uchar) (initial_len >> 29));
+	set_nth_byte(password+cindex, 1, (uchar) ((initial_len >> 29) >> 8 ));
+	set_nth_byte(password+cindex, 2, (uchar) ((initial_len >> 29) >> 16));
+	set_nth_byte(password+cindex, 3, (uchar) ((initial_len >> 29) >> 24));
 
 	// Process the message in successive 512-bit chunks:
 	//for each 512-bit chunk of message:
@@ -151,62 +235,86 @@ void md5(int *password, int initial_len, int cindex, uchar16 digest) {
 	}
 
 	//var char digest[16] := h0 append h1 append h2 append h3 //(Output is in little-endian)
-	digest.s0 = (uchar)  h0;
-	digest.s1 = (uchar) (h0 >> 8);
-	digest.s2 = (uchar) (h0 >> 16);
-	digest.s3 = (uchar) (h0 >> 24);
-	digest.s4 = (uchar)  h1;
-	digest.s5 = (uchar) (h1 >> 8);
-	digest.s6 = (uchar) (h1 >> 16);
-	digest.s7 = (uchar) (h1 >> 24);
-	digest.s8 = (uchar)  h2;
-	digest.s9 = (uchar) (h2 >> 8);
-	digest.sA = (uchar) (h2 >> 16);
-	digest.sB = (uchar) (h2 >> 24);
-	digest.sC = (uchar)  h3;
-	digest.sD = (uchar) (h3 >> 8);
-	digest.sE = (uchar) (h3 >> 16);
-	digest.sF = (uchar) (h3 >> 24);
+	*ch0 = h0;
+	*ch1 = h1;
+	*ch2 = h2;
+	*ch3 = h3;
+
 }
 
-__kernel void GPU_crackMD5(__global long *chunk, __global const unsigned char *hash, __global const char *cs,
-						   __global int *cs_size, __global int *passlen,__global int *sync, __global char *plain,
+void hash_cpy(__global int *dst, int *src){
+	int i;
+	for(int i=0; i<(HASH_SIZE/sizeof(int)); i++)
+		dst[i] = src[i];
+}
+
+/* This function returns 0, if there's no next combination to generate. Otherwise, return 1                     */
+int compute_new_starting_point(int *start_pt, int passlen, int cs_size){
+	int i,pos;
+	for(i=passlen-1; i>=0; i--){
+		pos = start_pt[i] + 1;
+		if(pos == cs_size){
+		   start_pt[i] = 0;
+		}
+		else{
+		   start_pt[i]++;
+		   break;
+		}
+	}
+	for(i=0; i<passlen; i++){
+		if(start_pt[i] != 0)
+		   return 1;
+	}
+	return 0;
+}
+
+//#define __kernel
+//#define __global
+
+__kernel void GPU_crackMD5(__global long *chunk, __global const int *hash, __global const char *cs,
+						   __global int *cs_size, __global int *passlen,__global int *sync, __global int *plain,
 						   __global unsigned char *computed_hash) {
 
-	int i,j,k,count,cindex,pos;
-	long init, powl;
+	int i,j,k,count,cindex,cs_size_rv,equalityCheck,passlen_rv, pos,term;
+	int digest[4], computedDigest[4];
+	uint h0, h1, h2, h3, computed_h0, computed_h1, computed_h2, computed_h3;
 	// ASSUMPTION: 512 is the maximum length of a password which can be given in input to this kernel
-	int start_pt[512];
-	int password[512];
-	uchar16 digest;
+	int password[512], start_pt[512];
+	long chunk_rv, init, powl;
+	uchar alph[26] = {'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'};
 
 	// get the index of the current element to be processed
 	i = get_global_id(0);
+	chunk_rv = *chunk;
+	cs_size_rv = *cs_size;
+	passlen_rv  = *passlen;
+
 	clean_int_array(password, 512);
 	clean_int_array(start_pt, 512);
+	h0 = ((__global const int *) hash)[0];
+	h1 = ((__global const int *) hash)[1];
+	h2 = ((__global const int *) hash)[2];
+	h3 = ((__global const int *) hash)[3];
 
 	/* --------------------------------------- Starting point computation ---------------------------------------- */
-	init = *chunk * i;
-	powl = *cs_size;
-	//int *start_pt = compute_starting_point(init, cs_size, passlen);
-	for(k=0; k<*passlen; k++){
-		powl = (powl << (*cs_size/k)) + ((powl % k) * powl);
-		pos = (int)(init/(powl % *cs_size));
-		start_pt[*passlen - k - 1] = pos;
-	}
+	init = chunk_rv * i;
+
 	/* ------------------------------------------------------------------------------------------------------------ */
 
-	// Variable that stores the info about the next byte where save the passwords' chars
-	count = 0;
-	// Index of the integer array password
-	cindex = 0;
-	for(j=0; j<*chunk; j++){
+	for(j=0; j<chunk_rv; j++, init++){
+		// Variable that stores the info about the next byte where save the passwords' chars
+		count = 0;
+		// Index of the integer array password
+		cindex = 0;
+		clean_int_array(password, 512);
+
 		/* -------------------------- Compute the password string putting it in a Integer ------------------------- *
 		 * This because ATI Mobility Radeon HD 4000 Series doesn't support access operations using data type sizes
 		 * 											less than 32 bits 												*/
-		for(k=0; k<*passlen; k++){
-			uchar c = (uchar)(cs[start_pt[k]]);
-			set_nth_byte(password[cindex], count, c);
+		for(k=0; k<passlen_rv; k++){
+			pos = (int)((init/ipowl((long) (cs_size_rv), k)) % cs_size_rv);
+			uchar c = (uchar)(97 + pos);
+			set_nth_byte(password+cindex, count, c);
 			if(count == (sizeof(int) - 1)){
 			   count = 0;
 			   cindex++;
@@ -214,10 +322,23 @@ __kernel void GPU_crackMD5(__global long *chunk, __global const unsigned char *h
 			else
 				count++;
 		}
+
 		/* -------------------------------------------------------------------------------------------------------- */
 
-		/* --------------------------------------------- MD5 computation ------------------------------------------ */
-		md5(password, *passlen, cindex, digest);
+		/* ------------------------------------- MD5 computation & verification ----------------------------------- */
+		md5(password, passlen_rv, cindex, &computed_h0, &computed_h1, &computed_h2, &computed_h3);
+		//equalityCheck = (h0 == computed_h0) && (h1 == computed_h1) && (h2 == computed_h2) && (h3 == computed_h3);
+
+		// A GPU-core has already found the password: hence, quit
+		if(*sync == PASSWD_FOUND)
+		   break;
+
+		if(equalityCheck == PASSWD_FOUND){
+		   *sync=equalityCheck;
+		   hash_cpy(plain, password);
+		   break;
+		}
 		/* -------------------------------------------------------------------------------------------------------- */
 	}
 }
+

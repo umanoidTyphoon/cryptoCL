@@ -19,6 +19,10 @@
 #define AVAILABLE_CORES COMPUTING_UNITS * STREAM_PROCESSING_UNITS // Number of total available cores on an ATI graphic card
 
 
-int crackMD5(unsigned char *hash, char *cs, int passlen);
+int crackMD5(char *hash, char *cs, int passlen);
+/* Convert a string stored in an integer array to the corresponding ASCII string */
+void from_int_to_ASCII(int *to_Convert, char *converted, int length);
+/* Convert a single integer to four characters */
+void from_int_to_chars(int to_Convert, char *converted);
 
 #endif /* HOST_H_ */

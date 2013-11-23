@@ -67,7 +67,7 @@ void printHash(unsigned char *hash);
  *
  * @return Zero in caso di successo, un codice di errore altrimenti //TODO: gestione errori
  */
-int strToBin(char *string, char *buffer, int size);
+int strToBin(char *string, unsigned char *buffer, int size);
 
 
 /**

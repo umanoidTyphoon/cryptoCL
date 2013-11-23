@@ -17,7 +17,10 @@
 #define PERMS 0666
 #define STR_INT_SIZE 16
 
-
+/* Print the PROMPT macro, declared in "verbose.h", at each iteration of
+ * the main I/O loop of the shell
+ */
+void print_sh_sym(char *promt_sym, int *iteration);
 
 /**
  * Reppresenta il main loop di I/O per l'impostazione delle variabili di lavoro
