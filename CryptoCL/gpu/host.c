@@ -34,15 +34,10 @@ int crackMD5(unsigned char *hash, char *cs, int passlen) {
 	double td;
 	int cs_len;
 	long chunk, disp;
-	int *start_pt;
 
 	cs_len = strlen(cs);
 	disp = DISPOSITIONS(cs_len, passlen);
 	chunk = DISP_PER_CORE(disp, AVAILABLE_CORES);
-
-	printf("%lu\n\n", disp);
-
-	//start_pt = compute_starting_point()
 
 	clut_open_device(&dev, PATH_TO_KERNEL);
 	clut_print_device_info(&dev);
@@ -54,9 +49,9 @@ int crackMD5(unsigned char *hash, char *cs, int passlen) {
 
 
 	/* ----------------------------------- Create memory buffers on the device ----------------------------------- */
-	cl_mem plain = clCreateBuffer(dev.context, CL_MEM_READ_WRITE, passlen * sizeof(int), NULL, &ret);
+	cl_mem dchunk = clCreateBuffer(dev.context, CL_MEM_READ_WRITE, sizeof(long), NULL, &ret);
 	if (ret)
-		clut_panic(ret, "Fallita l'allocazione della memoria sul device per la memorizzazione della password da testare");
+		clut_panic(ret, "Fallita l'allocazione della memoria sul device per la memorizzazione del chunk");
 
 	cl_mem dhash = clCreateBuffer(dev.context, CL_MEM_READ_ONLY, HASH_SIZE * sizeof(unsigned char), NULL, &ret);
 	if (ret)
@@ -66,37 +61,66 @@ int crackMD5(unsigned char *hash, char *cs, int passlen) {
 	if (ret)
 		clut_panic(ret, "Fallita l'allocazione della memoria sul device per la memorizzazione del charset");
 
-	cl_mem sync = clCreateBuffer(dev.context, CL_MEM_READ_WRITE, sizeof(char), NULL, &ret);
+	cl_mem charset_size = clCreateBuffer(dev.context, CL_MEM_READ_ONLY, sizeof(int), NULL, &ret);
+	if (ret)
+		clut_panic(ret, "Fallita l'allocazione della memoria sul device per la memorizzazione della taglia del charset");
+
+	cl_mem dpasslen = clCreateBuffer(dev.context, CL_MEM_READ_ONLY, sizeof(int), NULL, &ret);
+	if (ret)
+		clut_panic(ret, "Fallita l'allocazione della memoria sul device per la memorizzazione della taglia del charset");
+
+	cl_mem sync = clCreateBuffer(dev.context, CL_MEM_READ_WRITE, sizeof(int), NULL, &ret);
 	if (ret)
 		clut_panic(ret, "Fallita l'allocazione della memoria sul device per la memorizzazione del flag di sync");
 
-	cl_mem dcracked = clCreateBuffer(dev.context, CL_MEM_READ_WRITE, passlen * sizeof(char), NULL, &ret);
+	cl_mem dcracked = clCreateBuffer(dev.context, CL_MEM_READ_WRITE, passlen * sizeof(char) + 1, NULL, &ret);
+	if (ret)
+		clut_panic(ret, "Fallita l'allocazione della memoria sul device per la memorizzazione della password in chiaro");
+
+	cl_mem computed_hash = clCreateBuffer(dev.context, CL_MEM_READ_WRITE, HASH_SIZE * sizeof(unsigned char), NULL, &ret);
 	if (ret)
 		clut_panic(ret, "Fallita l'allocazione della memoria sul device per la memorizzazione della password in chiaro");
 
 
 	/* ----------------------------------- Write memory buffers on the device ------------------------------------ */
+	ret = clEnqueueWriteBuffer(dev.queue, dchunk, CL_TRUE, 0, sizeof(long), &chunk, 0, NULL, NULL);
+	if(ret)
+	   clut_panic(ret, "Fallita la scrittura del chunk sul buffer di memoria del device");
+
 	ret = clEnqueueWriteBuffer(dev.queue, dhash, CL_TRUE, 0, HASH_SIZE * sizeof(unsigned char), hash, 0, NULL, NULL);
 	if(ret)
-	   clut_panic(ret, "Fallita la scrittura dell' hash sul buffer di memoria del device");
+	   clut_panic(ret, "Fallita la scrittura dell'hash sul buffer di memoria del device");
 
 	ret = clEnqueueWriteBuffer(dev.queue, charset, CL_TRUE, 0, cs_len * sizeof(char), cs, 0, NULL, NULL);
 	if(ret)
-		clut_panic(ret, "Fallita la scrittura dell' hash sul buffer di memoria del device");
+	   clut_panic(ret, "Fallita la scrittura del charset sul buffer di memoria del device");
 
+	ret = clEnqueueWriteBuffer(dev.queue, charset_size, CL_TRUE, 0, sizeof(int), &cs_len, 0, NULL, NULL);
+	if(ret)
+	   clut_panic(ret, "Fallita la scrittura della taglia del charset sul buffer di memoria del device");
+
+	ret = clEnqueueWriteBuffer(dev.queue, dpasslen, CL_TRUE, 0, sizeof(int), &passlen, 0, NULL, NULL);
+	if(ret)
+	   clut_panic(ret, "Fallita la scrittura della taglia del charset sul buffer di memoria del device");
 
 	/* --------------------------------- Set the arguments to our compute kernel --------------------------------- */
-	ret  = clSetKernelArg(kernel, 0, sizeof(cl_mem), &plain);
+	ret  = clSetKernelArg(kernel, 0, sizeof(cl_mem), &dchunk);
 	ret |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &dhash);
 	ret |= clSetKernelArg(kernel, 2, sizeof(cl_mem), &charset);
-	ret |= clSetKernelArg(kernel, 3, sizeof(cl_mem), &sync);
-	ret |= clSetKernelArg(kernel, 4, sizeof(cl_mem), &dcracked);
+	ret |= clSetKernelArg(kernel, 3, sizeof(cl_mem), &charset_size);
+	ret |= clSetKernelArg(kernel, 4, sizeof(cl_mem), &dpasslen);
+	ret |= clSetKernelArg(kernel, 5, sizeof(cl_mem), &sync);
+	ret |= clSetKernelArg(kernel, 6, sizeof(cl_mem), &dcracked);
+	ret |= clSetKernelArg(kernel, 7, sizeof(cl_mem), &computed_hash);
 	clut_check_err(ret, "Fallito il setting degli argomenti del kernel");
 
 
 	/* ---------------------------------------- Execute the OpenCL kernel ---------------------------------------- */
-	ret = clEnqueueTask(dev.queue, kernel, 0, NULL, &evt);
-	clut_check_err(ret, "Fallita l'esecuzione del kernel");
+	size_t global_dim[] = { 1 };
+	size_t local_dim[]  = { 1 };
+	ret = clEnqueueNDRangeKernel(dev.queue, kernel, 1, NULL, global_dim, local_dim, 0, NULL, &evt);
+	if(ret)
+	   clut_check_err(ret, "Fallita l'esecuzione del kernel");
 
 
 	/* -------------------------- Read the device memory buffer to the local variable ---------------------------- */
@@ -113,7 +137,7 @@ int crackMD5(unsigned char *hash, char *cs, int passlen) {
 
 	/* ----------------------------------------------- Clean up -------------------------------------------------- */
 	ret  = clReleaseKernel(kernel);
-	ret |= clReleaseMemObject(plain);
+	ret |= clReleaseMemObject(dchunk);
 	ret |= clReleaseMemObject(dhash);
 	ret |= clReleaseMemObject(charset);
 	ret |= clReleaseMemObject(sync);

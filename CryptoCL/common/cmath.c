@@ -5,8 +5,6 @@
  *      Author: Daniele
  */
 
-#include <math.h>
-
 #include "cmath.h"
 
 long cpowl(int base, int exp){
