@@ -128,7 +128,7 @@ void set_nth_byte(int *integer, int byte_index, uchar c){
 }
 
 /* MD5 implementation in OpenCL. Instead of unsigned chars, integers are used */
-void md5(int *password, int initial_len, int cindex, int *ch0, int *ch1, int *ch2, int *ch3) {
+int md5(int *password, int initial_len, int cindex, int ch0, int ch1, int ch2, int ch3) {
 
 	// Constants are the integer part of the sines of integers (in radians) * 2^32.
 	const uint k[64] = {
@@ -235,10 +235,7 @@ void md5(int *password, int initial_len, int cindex, int *ch0, int *ch1, int *ch
 	}
 
 	//var char digest[16] := h0 append h1 append h2 append h3 //(Output is in little-endian)
-	*ch0 = h0;
-	*ch1 = h1;
-	*ch2 = h2;
-	*ch3 = h3;
+	return ((h0 == ch0) && (h1 == ch1) && (h2 == ch2) && (h3 == ch3));
 
 }
 
@@ -277,20 +274,27 @@ __kernel void GPU_crackMD5(__global long *chunk, __global const int *hash, __glo
 
 	int i,j,k,count,cindex,cs_size_rv,equalityCheck,passlen_rv, pos,term;
 	int digest[4], computedDigest[4];
-	uint h0, h1, h2, h3, computed_h0, computed_h1, computed_h2, computed_h3;
+	int h0, h1, h2, h3, out_h0, out_h1, out_h2, out_h3, sync_rv;
 	// ASSUMPTION: 512 is the maximum length of a password which can be given in input to this kernel
 	int password[512], start_pt[512];
 	long chunk_rv, init, powl;
+	int pass = 0;
 	uchar alph[26] = {'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'};
+	int bitmap[80] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+								0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
-	// get the index of the current element to be processed
+	// Get the index of the current element to be processed
 	i = get_global_id(0);
 	chunk_rv = *chunk;
 	cs_size_rv = *cs_size;
 	passlen_rv  = *passlen;
+	// Conditional flag set after md5 computation and verification
+	sync_rv = 0;
+	out_h0 = 0; out_h1 = 0; out_h2 = 0; out_h3 = 0;
 
 	clean_int_array(password, 512);
 	clean_int_array(start_pt, 512);
+	//cpy_in_pvt_mem(digest, (__global const int *) hash);
 	h0 = ((__global const int *) hash)[0];
 	h1 = ((__global const int *) hash)[1];
 	h2 = ((__global const int *) hash)[2];
@@ -298,7 +302,6 @@ __kernel void GPU_crackMD5(__global long *chunk, __global const int *hash, __glo
 
 	/* --------------------------------------- Starting point computation ---------------------------------------- */
 	init = chunk_rv * i;
-
 	/* ------------------------------------------------------------------------------------------------------------ */
 
 	for(j=0; j<chunk_rv; j++, init++){
@@ -321,24 +324,22 @@ __kernel void GPU_crackMD5(__global long *chunk, __global const int *hash, __glo
 			}
 			else
 				count++;
-		}
-
+			}
 		/* -------------------------------------------------------------------------------------------------------- */
 
 		/* ------------------------------------- MD5 computation & verification ----------------------------------- */
-		md5(password, passlen_rv, cindex, &computed_h0, &computed_h1, &computed_h2, &computed_h3);
-		//equalityCheck = (h0 == computed_h0) && (h1 == computed_h1) && (h2 == computed_h2) && (h3 == computed_h3);
+		equalityCheck = md5(password, passlen_rv, cindex, h0, h1, h2, h3);
+		/* -------------------------------------------------------------------------------------------------------- */
 
-		// A GPU-core has already found the password: hence, quit
-		if(*sync == PASSWD_FOUND)
-		   break;
-
+		//A GPU-core has already found the password: hence, quit
 		if(equalityCheck == PASSWD_FOUND){
 		   *sync=equalityCheck;
 		   hash_cpy(plain, password);
-		   break;
+		   return;
+		   }
 		}
 		/* -------------------------------------------------------------------------------------------------------- */
-	}
+		*sync = 0;
 }
+
 

@@ -143,10 +143,10 @@ int crackMD5(char *hash, char *cs, int passlen) {
 	   ret = clEnqueueReadBuffer(dev.queue, dcracked, CL_TRUE, 0, HASH_SIZE, digest, 0, NULL, NULL);
 	   if(ret)
 	      clut_check_err(ret, "Fallimento nel leggere la password");
-	   printf("Si. Password: %s\n", (char *)digest);
+	   printf("Si. Password: %s\n", found, (char *)digest);
 	}
 	else
-		printf("No.\n\n");
+		printf("No.\n");
 
 	/* ------------------------------------- Return kernel execution time ---------------------------------------- */
 	td = clut_get_duration(evt);
