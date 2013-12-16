@@ -33,20 +33,21 @@ int crackMD5(char *hash, char *cs, int passlen) {
 	cl_int ret;			// error code
 
 	double td;
-	int cs_len;
+	int cs_len, sync_flag;
 	long chunk, disp;
 	unsigned char bin_hash[HASH_SIZE];
 
 	cs_len = strlen(cs);
+	sync_flag = 0;
 	strToBin(hash, bin_hash, 2*HASH_SIZE);
 
 	disp = DISPOSITIONS(cs_len, passlen);
-	chunk = DISP_PER_CORE(disp, AVAILABLE_CORES);
+	chunk = DISP_PER_CORE(disp, AVAILABLE_THREADS);
 
 	debug("HOST", "Numero di disposizione da calcolare per stream processing unit = %lu\n", chunk);
 
 	clut_open_device(&dev, PATH_TO_KERNEL);
-	//clut_print_device_info(&dev);
+	clut_print_device_info(&dev);
 
 
 	/* ----------------------------------------- Create execution kernel ----------------------------------------- */
@@ -75,6 +76,7 @@ int crackMD5(char *hash, char *cs, int passlen) {
 	if (ret)
 		clut_panic(ret, "Fallita l'allocazione della memoria sul device per la memorizzazione della taglia del charset");
 
+	//cl_mem sync = clCreateBuffer(dev.context, CL_MEM_READ_WRITE, AVAILABLE_CORES * sizeof(int), NULL, &ret);
 	cl_mem sync = clCreateBuffer(dev.context, CL_MEM_READ_WRITE, sizeof(int), NULL, &ret);
 	if (ret)
 		clut_panic(ret, "Fallita l'allocazione della memoria sul device per la memorizzazione del flag di sync");
@@ -109,6 +111,11 @@ int crackMD5(char *hash, char *cs, int passlen) {
 	if(ret)
 	   clut_panic(ret, "Fallita la scrittura della taglia del charset sul buffer di memoria del device");
 
+	//ret = clEnqueueWriteBuffer(dev.queue, sync, CL_TRUE, 0, AVAILABLE_CORES * sizeof(int), &sync_flag, 0, NULL, NULL);
+	ret = clEnqueueWriteBuffer(dev.queue, sync, CL_TRUE, 0, sizeof(int), &sync_flag, 0, NULL, NULL);
+		if(ret)
+		   clut_panic(ret, "Fallita la scrittura della taglia del charset sul buffer di memoria del device");
+
 	/* --------------------------------- Set the arguments to our compute kernel --------------------------------- */
 	ret  = clSetKernelArg(kernel, 0, sizeof(cl_mem), &dchunk);
 	ret |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &dhash);
@@ -122,28 +129,37 @@ int crackMD5(char *hash, char *cs, int passlen) {
 
 
 	/* ---------------------------------------- Execute the OpenCL kernel ---------------------------------------- */
-	size_t global_dim[] = { AVAILABLE_CORES };
-	size_t local_dim[]  = { 1 };
+	size_t global_dim[] = { AVAILABLE_THREADS };
 	ret = clEnqueueNDRangeKernel(dev.queue, kernel, 1, NULL, global_dim, NULL, 0, NULL, &evt);
 	if(ret)
 	   clut_check_err(ret, "Fallita l'esecuzione del kernel");
 
 
 	/* -------------------------- Read the device memory buffer to the local variable ---------------------------- */
-	int   found = -1;
+	//int found[80];
+	int found;
 	int digest[HASH_SIZE/sizeof(int)];
 	char *password = (char *) malloc(passlen * sizeof(char) + 1);
 	memset(password, 0, passlen * sizeof(char) + 1);
+	//memset(found, 0, AVAILABLE_CORES * sizeof(int));
 
+	//ret = clEnqueueReadBuffer(dev.queue, sync, CL_TRUE, 0, AVAILABLE_CORES * sizeof(int), found, 0, NULL, NULL);
 	ret = clEnqueueReadBuffer(dev.queue, sync, CL_TRUE, 0, sizeof(int), &found, 0, NULL, NULL);
 	if(ret)
 	   clut_check_err(ret, "Fallimento nel leggere se la password e' stata trovata con successo");
 	debug("HOST", "La password e' stata trovata dal kernel OpenCL? ");
+
+	/*int i;
+	for(i=0; i<AVAILABLE_CORES; i++){
+		printf(" %d ", found[i]);
+	}
+	printf("\n");*/
+
 	if(found){
 	   ret = clEnqueueReadBuffer(dev.queue, dcracked, CL_TRUE, 0, HASH_SIZE, digest, 0, NULL, NULL);
 	   if(ret)
 	      clut_check_err(ret, "Fallimento nel leggere la password");
-	   printf("Si. Password: %s\n", found, (char *)digest);
+	   printf("Si. Password: %s\n", (char *)digest);
 	}
 	else
 		printf("No.\n");
@@ -157,9 +173,14 @@ int crackMD5(char *hash, char *cs, int passlen) {
 	ret |= clReleaseMemObject(dchunk);
 	ret |= clReleaseMemObject(dhash);
 	ret |= clReleaseMemObject(charset);
+	ret |= clReleaseMemObject(charset_size);
+	ret |= clReleaseMemObject(dpasslen);
 	ret |= clReleaseMemObject(sync);
 	ret |= clReleaseMemObject(dcracked);
+	ret |= clReleaseMemObject(computed_hash);
 	clut_check_err(ret, "Rilascio di risorse fallito");
+
+	clFinish(dev.queue);
 
 	clut_close_device(&dev);
 

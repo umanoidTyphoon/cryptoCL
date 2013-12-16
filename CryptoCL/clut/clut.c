@@ -35,7 +35,7 @@ void clut_open_device(clut_device* dev, char* program_name) {
 
     // try to connect to a GPU
     err = clGetDeviceIDs(dev->platform_id, 
-                         CL_DEVICE_TYPE_GPU, 1, 
+                         CL_DEVICE_TYPE_GPU, 1,
                          &dev->device_id, NULL);
 
     if (err != CL_SUCCESS) {

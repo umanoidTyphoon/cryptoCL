@@ -16,7 +16,8 @@
  * HD 4500. A stream processing unit is totally equivalent to a CUDA CORE */
 #define STREAM_PROCESSING_UNITS 40
 #define STARTING_CHAR(init, cs_size, pos) (((long)((init)/(powl(cs_size, pos))))%(cs_size));
-#define AVAILABLE_CORES COMPUTING_UNITS * STREAM_PROCESSING_UNITS // Number of total available cores on an ATI graphic card
+#define AVAILABLE_CORES ((COMPUTING_UNITS)*(STREAM_PROCESSING_UNITS)) // Number of total available cores on an ATI graphic card
+#define AVAILABLE_THREADS 1024
 
 
 int crackMD5(char *hash, char *cs, int passlen);
